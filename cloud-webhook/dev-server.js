@@ -1,7 +1,6 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const url = require('url');
 
 // 1. Carregador simples de arquivo .env (sem dependências externas)
 const envPath = path.resolve(__dirname, '.env');
@@ -85,12 +84,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  const parsedUrl = url.parse(req.url, true);
+  const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = parsedUrl.pathname;
 
   // --- Rota 1: POST /api/webhook-receita ---
   if (pathname === '/api/webhook-receita' && req.method === 'POST') {
-    const secretParam = parsedUrl.query.secret || req.headers['x-webhook-secret'];
+    const secretParam = parsedUrl.searchParams.get('secret') || req.headers['x-webhook-secret'];
 
     if (secretParam !== WEBHOOK_SECRET) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -146,7 +145,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const cnpj = parsedUrl.query.cnpj;
+    const cnpj = parsedUrl.searchParams.get('cnpj');
     if (!cnpj) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'CNPJ é obrigatório na query string.' }));
