@@ -11,13 +11,44 @@ export class AuthService {
   private static cacheFilePath = path.resolve(__dirname, '../../token_cache.json');
 
   /**
+   * Determina e retorna as URLs e configurações da Receita Federal baseadas no ambiente ativo.
+   */
+  public static getUrlsPorAmbiente(): { baseUrl: string; tokenUrl: string; prefixoRtc: string } {
+    const ambiente = (process.env.RF_AMBIENTE || 'producao').toLowerCase();
+    const customBaseUrl = process.env.RF_BASE_URL;
+
+    if (ambiente === 'homologacao') {
+      const baseUrl = customBaseUrl || 'https://h-gateway.receitaintegra.serpro.gov.br';
+      return {
+        baseUrl,
+        tokenUrl: `${baseUrl}/token`,
+        prefixoRtc: '/rtc'
+      };
+    } else if (ambiente === 'producao_restrita') {
+      const baseUrl = customBaseUrl || 'https://api.receitafederal.gov.br';
+      return {
+        baseUrl,
+        tokenUrl: `${baseUrl}/token`,
+        prefixoRtc: '/prr-rtc'
+      };
+    } else {
+      // Padrão: producao
+      const baseUrl = customBaseUrl || 'https://api.receitafederal.gov.br';
+      return {
+        baseUrl,
+        tokenUrl: `${baseUrl}/token`,
+        prefixoRtc: '/rtc'
+      };
+    }
+  }
+
+  /**
    * Obtem o token de acesso OAuth2 valido, renovando proativamente se estiver expirado ou perto de expirar.
    * Utiliza cache em disco (token_cache.json) para persistir entre reinicializacoes da aplicacao.
    */
   public static async getAccessToken(): Promise<string> {
     const clientId = process.env.RF_CLIENT_ID;
     const clientSecret = process.env.RF_CLIENT_SECRET;
-    const baseUrl = process.env.RF_BASE_URL || 'https://api.receitafederal.gov.br';
 
     if (!clientId || !clientSecret) {
       throw new Error(
@@ -35,22 +66,24 @@ export class AuthService {
       return cache.accessToken;
     }
 
-    console.log('[Auth] Token expirado, ausente ou perto do vencimento. Solicitando novo token a Receita Federal...');
-    const tokenUrl = `${baseUrl}/token`;
+    const { tokenUrl } = this.getUrlsPorAmbiente();
+    console.log(`[Auth] Solicitando novo token à Receita Federal (${tokenUrl})...`);
 
     try {
+      // Credenciais em Base64 para Basic Auth (Authorization: Basic <base64>)
+      const credentialsBase64 = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+
       // Configuracao do corpo form-urlencoded conforme manual
       const params = new URLSearchParams();
       params.append('grant_type', 'client_credentials');
-      params.append('client_id', clientId);
-      params.append('client_secret', clientSecret);
 
       const response = await axios.post<{ access_token: string; expires_in?: number }>(
         tokenUrl,
         params,
         {
           headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': `Basic ${credentialsBase64}`
           }
         }
       );

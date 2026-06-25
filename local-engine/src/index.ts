@@ -26,7 +26,11 @@ async function run() {
   const webhookUrl = process.env.RF_WEBHOOK_URL;
   const vercelApiUrl = process.env.VERCEL_API_URL;
   const webhookSecret = process.env.WEBHOOK_SECRET;
-  const rfBaseUrl = process.env.RF_BASE_URL || 'https://api.receitafederal.gov.br';
+
+  // Carrega dinamicamente a configuração do ambiente
+  const configAmbiente = AuthService.getUrlsPorAmbiente();
+  const rfBaseUrl = configAmbiente.baseUrl;
+  const prefixoRtc = configAmbiente.prefixoRtc;
 
   // 1. Validacao de configuracoes do ambiente
   if (!cnpj || !/^\d{8}$/.test(cnpj)) {
@@ -51,8 +55,8 @@ async function run() {
     console.log('✓ Token OAuth2 valido e ativo.');
 
     // 4. Passo 3: Disparar Solicitacao de Apuracao Assincrona na Receita
-    console.log(`[Passo 3/5] Disparando solicitacao de apuracao de débitos para ${cnpj}...`);
-    const apuracaoUrl = `${rfBaseUrl}/rtc/apuracao-cbs/v1/${cnpj}`;
+    console.log(`[Passo 3/5] Disparando solicitacao de apuracao de débitos para ${cnpj} (${process.env.RF_AMBIENTE || 'producao'})...`);
+    const apuracaoUrl = `${rfBaseUrl}${prefixoRtc}/apuracao-cbs/v1/${cnpj}`;
 
     // Chamada HTTP para a Receita Federal informando o webhook da Vercel
     const responseSolicitacao = await axios.post(
@@ -117,11 +121,13 @@ async function run() {
     
     // Pega o token OAuth2 novamente (se expirou na espera, o servico renova automaticamente)
     const activeToken = await AuthService.getAccessToken();
-    const downloadUrl = `${rfBaseUrl}/rtc/download/v1/${tiquete}`;
+    const downloadUrl = `${rfBaseUrl}${prefixoRtc}/download/v1/${tiquete}`;
+    console.log(`[Download] Solicitando download do arquivo de débitos à Receita Federal...`);
 
     const responseDownload = await axios.get(downloadUrl, {
       headers: {
         Authorization: `Bearer ${activeToken}`,
+        'Content-Type': 'application/json',
         Accept: 'application/json'
       }
     });
