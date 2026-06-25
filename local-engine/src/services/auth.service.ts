@@ -1,0 +1,105 @@
+import axios from 'axios';
+import * as fs from 'fs';
+import * as path from 'path';
+
+interface TokenCache {
+  accessToken: string;
+  expiresAt: number;
+}
+
+export class AuthService {
+  private static cacheFilePath = path.resolve(__dirname, '../../token_cache.json');
+
+  /**
+   * Obtem o token de acesso OAuth2 valido, renovando proativamente se estiver expirado ou perto de expirar.
+   * Utiliza cache em disco (token_cache.json) para persistir entre reinicializacoes da aplicacao.
+   */
+  public static async getAccessToken(): Promise<string> {
+    const clientId = process.env.RF_CLIENT_ID;
+    const clientSecret = process.env.RF_CLIENT_SECRET;
+    const baseUrl = process.env.RF_BASE_URL || 'https://api.receitafederal.gov.br';
+
+    if (!clientId || !clientSecret) {
+      throw new Error(
+        'Configuracao Ausente: RF_CLIENT_ID e RF_CLIENT_SECRET precisam estar configurados no arquivo .env.'
+      );
+    }
+
+    // Tenta ler o token previamente cacheado no disco
+    const cache = this.lerCacheDoDisco();
+    const bufferTimeMs = 5 * 60 * 1000; // 5 minutos de margem
+    const now = Date.now();
+
+    if (cache && now < cache.expiresAt - bufferTimeMs) {
+      console.log('[Auth] Utilizando token OAuth2 valido recuperado do cache em disco.');
+      return cache.accessToken;
+    }
+
+    console.log('[Auth] Token expirado, ausente ou perto do vencimento. Solicitando novo token a Receita Federal...');
+    const tokenUrl = `${baseUrl}/token`;
+
+    try {
+      // Configuracao do corpo form-urlencoded conforme manual
+      const params = new URLSearchParams();
+      params.append('grant_type', 'client_credentials');
+      params.append('client_id', clientId);
+      params.append('client_secret', clientSecret);
+
+      const response = await axios.post<{ access_token: string; expires_in?: number }>(
+        tokenUrl,
+        params,
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          }
+        }
+      );
+
+      const { access_token, expires_in } = response.data;
+
+      if (!access_token) {
+        throw new Error('A resposta da Receita Federal nao retornou a chave de acesso (access_token).');
+      }
+
+      // Se o governo nao retornar expires_in, assume-se a validade padrao do manual (1 hora = 3600 segundos)
+      const durationSeconds = expires_in || 3600;
+      const expiresAt = Date.now() + durationSeconds * 1000;
+
+      // Salva o token cacheado no disco
+      this.salvarCacheNoDisco({ accessToken: access_token, expiresAt });
+
+      console.log(`[Auth] Novo token OAuth2 obtido com sucesso. Expira em: ${new Date(expiresAt).toLocaleTimeString('pt-BR')}`);
+      return access_token;
+    } catch (error: any) {
+      console.error('Falha catastrofica ao autenticar na Receita Federal:', error.response?.data || error.message);
+      throw new Error(`Erro na autenticacao OAuth2: ${error.response?.data?.error_description || error.message}`);
+    }
+  }
+
+  /**
+   * Le o cache de token do arquivo local.
+   */
+  private static lerCacheDoDisco(): TokenCache | null {
+    try {
+      if (fs.existsSync(this.cacheFilePath)) {
+        const fileContent = fs.readFileSync(this.cacheFilePath, 'utf-8');
+        return JSON.parse(fileContent);
+      }
+    } catch (error) {
+      console.warn('[Auth] Aviso: Falha ao ler cache de token do disco, sera gerada uma nova requisicao.', error);
+    }
+    return null;
+  }
+
+  /**
+   * Grava o cache de token no arquivo local.
+   */
+  private static salvarCacheNoDisco(cache: TokenCache): void {
+    try {
+      fs.writeFileSync(this.cacheFilePath, JSON.stringify(cache, null, 2), 'utf-8');
+    } catch (error) {
+      console.error('[Auth] Erro critico ao salvar cache de token em disco:', error);
+    }
+  }
+}
+

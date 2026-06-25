@@ -1,0 +1,20 @@
+{
+  "name": "local-engine-receita",
+  "version": "1.0.0",
+  "description": "Motor local para autenticacao, solicitacao de apuracao e download seguro da CBS da Receita Federal",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "axios": "^1.6.7",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3"
+  }
+}

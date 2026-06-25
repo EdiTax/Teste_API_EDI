@@ -1,0 +1,127 @@
+version: "1.0.0"
+project: "Integracao Apuracao Assistida Receita Federal"
+description: "Passo a passo e regras para integracao com a API de apuracao de CBS da Receita Federal."
+
+contexto:
+  objetivo: "Permitir que os contribuintes possam receber as informacoes de apuracao em formato legivel por maquina, viabilizando o cruzamento de dados e validacao por meio de seus proprios sistemas."
+  apis_cbs_previstas:
+    - "Consultar Debitos de CBS do Mes Corrente (Disponivel)"
+    - "Consultar Creditos de CBS do Mes Corrente (Futuro)"
+    - "Consultar Pagamentos de CBS do Mes Corrente (Futuro)"
+    - "Consultar Pagamentos de CBS a Fornecedores do Mes Corrente (Futuro)"
+    - "Concluir Apuracao de CBS do Mes Anterior (Futuro)"
+  apis_disponiveis_atual:
+    - "Consultar Debitos de CBS"
+    - "Obter dados atualizados sobre tributos (atuais e retroativos)"
+    - "Calculadora de Tributos (para emissao de documentos fiscais/ERPs)"
+  glossario:
+    api_key: "Codigo unico usado para autenticar e autorizar um usuario, desenvolvedor ou aplicativo."
+    endpoint: "Endereco especifico (URL) onde a API recebe requisicoes e fornece acesso a um recurso."
+    header: "Informacoes adicionais enviadas na requisicao/resposta, como tipo de conteudo ou tokens."
+    body_payload: "O corpo da requisicao ou resposta, contendo os dados reais enviados (como JSON ou XML)."
+    webhook: "Endereco especifico (URL) para onde a API retorna informacoes."
+  gerenciamento_acesso:
+    servico: "Gerar Credencial"
+    portal: "Portal Nacional da Tributacao sobre Consumo"
+    url_portal: "https://consumo.tributos.gov.br"
+    autenticacao: "Conta gov.br representando o contribuinte ou procurador"
+    credenciais:
+      - "ClientId"
+      - "ClientSecret"
+
+
+fases:
+  - fase: 1
+    nome: "Infraestrutura na Nuvem (Webhook)"
+    tecnologias_sugeridas:
+      - "Next.js (Serverless Functions) ou Fastify"
+      - "TypeScript"
+      - "Vercel KV (Redis) ou Supabase (PostgreSQL)"
+    passos:
+      - passo: 1
+        titulo: "Criacao da Serverless Function na Vercel"
+        endpoint:
+          metodo: "POST"
+          rota: "/api/webhook-receita"
+        regras_seguranca:
+          - "Validar assinatura digital ou token secreto no Header/Query da requisicao para evitar spoofing."
+          - "Implementar HTTPS e TLS 1.3 como protocolo minimo."
+          - "Limitar o tamanho do payload (max 10KB) para mitigar ataques de negacao de servico (DoS)."
+        logica: "Capturar o tiquete de processamento contido no payload e persistir temporariamente em nuvem."
+        armazenamento: "Vercel KV (Redis) com TTL (Time-To-Live) de 24h ou Supabase com limpeza automatica."
+
+  - fase: 2
+    nome: "Motor Local (Aplicacao Localhost)"
+    tecnologias_sugeridas:
+      - "Node.js com TypeScript"
+      - "Axios ou Got para chamadas HTTP"
+      - "Dotenv-safe para validacao de schema do .env"
+    passos:
+      - passo: 2
+        titulo: "Obtencao de Credenciais Iniciais"
+        origem: "Portal Nacional da Tributacao sobre Consumo (Servico Gerar Credencial)"
+        variaveis_env:
+          - "RF_CLIENT_ID"
+          - "RF_CLIENT_SECRET"
+          - "RF_WEBHOOK_URL"
+          - "RF_BASE_URL"
+          - "CLOUD_DB_URL"
+        regras_seguranca:
+          - "Adicionar .env ao .gitignore imediatamente."
+          - "Garantir seguranca do sistema de arquivos local (permissoes restritas de leitura)."
+
+      - passo: 3
+        titulo: "Autenticacao (OAuth2)"
+        endpoint: "https://api.receitafederal.gov.br/token"
+        metodo: "POST"
+        dados_envio:
+          grant_type: "client_credentials"
+          client_id: "RF_CLIENT_ID"
+          client_secret: "RF_CLIENT_SECRET"
+        retorno:
+          - "access_token"
+          - "expires_in (1 hora)"
+        regras_negocio:
+          - "Armazenar o token em cache na memoria da aplicacao local."
+          - "Renovar proativamente o token 5 a 10 minutos antes de expirar."
+
+      - passo: 4
+        titulo: "Disparar a Solicitacao de Apuracao"
+        endpoint: "https://api.receitafederal.gov.br/rtc/apuracao-cbs/v1/{cnpj}"
+        metodo: "POST"
+        parametros:
+          path: "cnpj (8 primeiros digitos)"
+          headers:
+            Authorization: "Bearer {token}"
+          body:
+            webhookUrl: "RF_WEBHOOK_URL"
+        regras_negocio:
+          limite_diario: 2
+          retorno_erro_excedido: 429
+        regras_seguranca:
+          - "Implementar Circuit Breaker e Lock local (ou persistido) por CNPJ/Dia."
+          - "Registrar auditoria detalhada de cada solicitacao efetuada antes de disparar a requisicao."
+
+      - passo: 5
+        titulo: "Sincronizacao dos Dados"
+        estrategia: "Polling seguro ou WebSockets/SSE"
+        logica: "A aplicacao local consulta periodicamente o banco de dados em nuvem buscando se o webhook registrou o tiquete correspondente."
+        frequencia_sugerida: "30 segundos"
+        tempo_maximo_espera: "10 minutos (Timeout do processamento)"
+
+      - passo: 6
+        titulo: "Download do Arquivo JSON Final"
+        endpoint: "https://api.receitafederal.gov.br/rtc/download/v1/{tiquete}"
+        metodo: "GET"
+        parametros:
+          path: "tiquete"
+          headers:
+            Authorization: "Bearer {token}"
+        regras_negocio:
+          limite_tiquete: 8
+          tempo_disponivel: "24 horas"
+        processamento:
+          - "Realizar o download seguro do JSON contendo debitos de CBS."
+          - "Validar a integridade e schema do JSON recebido."
+          - "Persistir os dados no banco de dados local ou gerar relatorios."
+          - "Disparar comando de delecao do tiquete no banco de dados na nuvem (limpeza de dados sensiveis)."
