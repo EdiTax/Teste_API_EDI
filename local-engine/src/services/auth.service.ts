@@ -1,6 +1,7 @@
 import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as readline from 'readline';
 
 interface TokenCache {
   accessToken: string;
@@ -9,6 +10,22 @@ interface TokenCache {
 
 export class AuthService {
   private static cacheFilePath = path.resolve(__dirname, '../../token_cache.json');
+
+  /**
+   * Helper para perguntar dados no console local de forma assíncrona.
+   */
+  private static promptQuestion(query: string): Promise<string> {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+    return new Promise((resolve) => {
+      rl.question(query, (answer) => {
+        rl.close();
+        resolve(answer.trim());
+      });
+    });
+  }
 
   /**
    * Determina e retorna as URLs e configurações da Receita Federal baseadas no ambiente ativo.
@@ -47,12 +64,24 @@ export class AuthService {
    * Utiliza cache em disco (token_cache.json) para persistir entre reinicializacoes da aplicacao.
    */
   public static async getAccessToken(): Promise<string> {
-    const clientId = process.env.RF_CLIENT_ID;
-    const clientSecret = process.env.RF_CLIENT_SECRET;
+    let clientId = process.env.RF_CLIENT_ID;
+    let clientSecret = process.env.RF_CLIENT_SECRET;
+
+    // Pergunta de forma interativa se não estiver configurado no .env (segurança avançada)
+    if (!clientId) {
+      console.log('\n[Segurança] RF_CLIENT_ID não encontrado no arquivo .env.');
+      clientId = await this.promptQuestion('👉 Insira o seu Client ID da Receita Federal: ');
+    }
+
+    if (!clientSecret) {
+      console.log('[Segurança] RF_CLIENT_SECRET não encontrado no arquivo .env.');
+      clientSecret = await this.promptQuestion('👉 Insira o seu Client Secret da Receita Federal: ');
+      console.log(''); // Pula linha
+    }
 
     if (!clientId || !clientSecret) {
       throw new Error(
-        'Configuracao Ausente: RF_CLIENT_ID e RF_CLIENT_SECRET precisam estar configurados no arquivo .env.'
+        'Erro de Autenticação: Client ID e Client Secret são obrigatórios para obter o token.'
       );
     }
 

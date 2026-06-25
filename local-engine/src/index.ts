@@ -52,11 +52,14 @@ async function run() {
     // 3. Passo 2: Obter Token de Autenticacao OAuth2
     console.log('[Passo 2/5] Solicitando token de autenticacao OAuth2 da Receita Federal...');
     const accessToken = await AuthService.getAccessToken();
-    console.log('✓ Token OAuth2 valido e ativo.');
+    const tokenMascarado = `${accessToken.substring(0, 8)}...${accessToken.substring(accessToken.length - 8)}`;
+    console.log(`✓ Token OAuth2 obtido com sucesso: [ ${tokenMascarado} ]`);
 
     // 4. Passo 3: Disparar Solicitacao de Apuracao Assincrona na Receita
     console.log(`[Passo 3/5] Disparando solicitacao de apuracao de débitos para ${cnpj} (${process.env.RF_AMBIENTE || 'producao'})...`);
     const apuracaoUrl = `${rfBaseUrl}${prefixoRtc}/apuracao-cbs/v1/${cnpj}`;
+    console.log(`👉 Enviando POST para: ${apuracaoUrl}`);
+    console.log(`👉 Webhook que receberá o tíquete: ${webhookUrl}`);
 
     // Chamada HTTP para a Receita Federal informando o webhook da Vercel
     const responseSolicitacao = await axios.post(
@@ -154,13 +157,27 @@ async function run() {
     console.log('===============================================================');
 
   } catch (error: any) {
-    console.error('❌ ERRO NO MOTOR DE PROCESSAMENTO LOCAL:');
-    if (error.response) {
-      console.error(`Status HTTP: ${error.response.status}`);
-      console.error('Dados de retorno da API:', error.response.data);
+    console.log('\n===============================================================');
+    console.error('❌ ERRO NO MOTOR DE PROCESSAMENTO LOCAL');
+    console.log('===============================================================');
+    
+    if (error.code === 'ETIMEDOUT' || error.message.includes('ETIMEDOUT') || error.code === 'ENOTFOUND') {
+      console.error('❌ ERRO DE CONEXÃO (TIMEOUT OU FALHA DE DNS DE REDE):');
+      console.error(`Não foi possível estabelecer contato físico com o servidor da Receita Federal.`);
+      console.error(`\n🔍 DIAGNÓSTICO E PRÓXIMOS PASSOS:`);
+      console.error(`1. Instabilidade: O ambiente de homologação do Serpro (${rfBaseUrl}) costuma ficar fora do ar.`);
+      console.error(`2. Bloqueio de Rede/VPN: Algumas APIs de homologação do governo exigem que o seu IP de saída esteja na whitelist ou que você esteja conectado a uma VPN específica.`);
+      console.error(`3. Firewall: Verifique se sua rede corporativa ou roteador bloqueia conexões de saída para esse IP.`);
+      console.error(`\n💡 Alternativa de teste rápido:`);
+      console.error(`Edite o arquivo .env e mude a variável RF_AMBIENTE de "homologacao" para "producao" ou "producao_restrita".`);
+      console.error(`(A API de produção deve responder com erro de credenciais inválidas (401), comprovando que seu código e sua internet estão funcionando!)`);
+    } else if (error.response) {
+      console.error(`Status HTTP retornado: ${error.response.status}`);
+      console.error('Dados de retorno da API:', JSON.stringify(error.response.data, null, 2));
     } else {
-      console.error(error.message);
+      console.error(`Erro físico/interno: ${error.message}`);
     }
+    console.log('===============================================================');
     process.exit(1);
   }
 }
