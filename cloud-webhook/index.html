@@ -32,12 +32,49 @@
       </div>
     </header>
 
+    <!-- Barra de Cópia Rápida da URL do Webhook -->
+    <section class="url-copy-bar glass-card">
+      <div class="copy-bar-info">
+        <span class="badge">Webhook URL de Produção</span>
+        <span class="url-text" id="webhook-full-url">Carregando URL...</span>
+      </div>
+      <button class="btn-copy" id="btn-copy-url">
+        <span>Copiar URL</span>
+        <span class="btn-icon">📋</span>
+      </button>
+    </section>
+
     <!-- Grid Principal -->
     <main class="app-grid">
       
-      <!-- Lado Esquerdo: Monitoramento e Simulação -->
+      <!-- Lado Esquerdo: Diagnósticos, Monitoramento e Simulação -->
       <div class="grid-column">
-        <!-- Card 1: Simulador de Eventos da Receita Federal -->
+        <!-- Card 1: Diagnóstico de Variáveis de Ambiente -->
+        <section class="glass-card env-card">
+          <div class="card-header">
+            <h2>🔒 Status de Configuração da Nuvem</h2>
+            <p>Verificação de segurança e integridade das variáveis de ambiente na Vercel.</p>
+          </div>
+          <div class="env-checklist">
+            <div class="checklist-item" id="chk-secret">
+              <span class="item-status status-loading">⏳</span>
+              <span class="item-label">WEBHOOK_SECRET (Chave do Webhook)</span>
+            </div>
+            <div class="checklist-item" id="chk-url">
+              <span class="item-status status-loading">⏳</span>
+              <span class="item-label">SUPABASE_URL (URL do Banco)</span>
+            </div>
+            <div class="checklist-item" id="chk-key">
+              <span class="item-status status-loading">⏳</span>
+              <span class="item-label">SUPABASE_SERVICE_ROLE_KEY (Chave do Banco)</span>
+            </div>
+          </div>
+          <div class="env-storage-type" id="env-storage">
+            Tipo de Armazenamento: Carregando...
+          </div>
+        </section>
+
+        <!-- Card 2: Simulador de Eventos da Receita Federal -->
         <section class="glass-card">
           <div class="card-header">
             <h2>🧪 Simulador de Webhook (Receita Federal)</h2>
@@ -64,7 +101,7 @@
           <div id="sim-feedback" class="feedback-msg hidden"></div>
         </section>
 
-        <!-- Card 2: Consulta Rápida de Tíquete -->
+        <!-- Card 3: Consulta Rápida de Tíquete -->
         <section class="glass-card">
           <div class="card-header">
             <h2>🔍 Consulta Reativa de Tíquete</h2>
@@ -88,9 +125,33 @@
         </section>
       </div>
 
-      <!-- Lado Direito: Arquitetura e Monitor de Logs -->
+      <!-- Lado Direito: Pipeline, Histórico e logs -->
       <div class="grid-column">
-        <!-- Card 3: Status dos Fluxos e Próximos Passos -->
+        <!-- Card 4: Histórico de Tíquetes na Sessão -->
+        <section class="glass-card history-card">
+          <div class="card-header">
+            <h2>📂 Tíquetes Recebidos na Sessão</h2>
+            <p>Histórico rápido de tíquetes interceptados pelo Webhook durante os testes.</p>
+          </div>
+          <div class="history-list-wrapper">
+            <table class="history-table">
+              <thead>
+                <tr>
+                  <th>CNPJ</th>
+                  <th>Tíquete</th>
+                  <th>Horário</th>
+                </tr>
+              </thead>
+              <tbody id="history-list-body">
+                <tr id="history-empty">
+                  <td colspan="3" class="empty-state">Nenhum tíquete recebido nesta sessão.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Card 5: Status dos Fluxos -->
         <section class="glass-card progress-card">
           <div class="card-header">
             <h2>⚙️ Pipeline de Integração CBS</h2>
@@ -128,7 +189,7 @@
           </div>
         </section>
 
-        <!-- Card 4: Monitor de Eventos Locais -->
+        <!-- Card 6: Monitor de Eventos Locais -->
         <section class="glass-card log-card">
           <div class="card-header">
             <h2>📋 Log de Atividades da Interface</h2>

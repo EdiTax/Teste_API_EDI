@@ -193,6 +193,18 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // --- Nova Rota: GET /api/status-env ---
+  if (pathname === '/api/status-env' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      webhookSecret: !!WEBHOOK_SECRET,
+      supabaseUrl: !!SUPABASE_URL,
+      supabaseKey: !!SUPABASE_KEY,
+      storageType: (SUPABASE_URL && SUPABASE_KEY) ? 'Supabase Database' : 'Memory Storage (Volatile)'
+    }));
+    return;
+  }
+
   // --- Rota 3: Servir Arquivos Estáticos (index.html, index.css, app.js) ---
   let filePath = path.join(__dirname, pathname === '/' ? 'index.html' : pathname);
   const extname = path.extname(filePath);
