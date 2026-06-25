@@ -4,7 +4,8 @@
   "description": "Serverless Webhook para receber tiquetes da Receita Federal e persistir na nuvem",
   "main": "api/webhook-receita.ts",
   "scripts": {
-    "vercel-dev": "vercel dev"
+    "vercel-dev": "vercel dev",
+    "start": "node dev-server.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.8",

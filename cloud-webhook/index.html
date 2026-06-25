@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Apuração Assistida CBS — Painel Webhook</title>
+  <!-- Google Fonts: Outfit e Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- CSS Externo -->
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+  
+  <div class="background-decor-1"></div>
+  <div class="background-decor-2"></div>
+
+  <div class="container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo-area">
+        <span class="logo-icon">⚡</span>
+        <div>
+          <h1>Apuração Assistida CBS</h1>
+          <p>Painel de Monitoramento & Webhook Receita Federal</p>
+        </div>
+      </div>
+      <div class="status-indicator" id="api-status">
+        <span class="status-dot"></span>
+        <span class="status-text">Webhook Local Ativo</span>
+      </div>
+    </header>
+
+    <!-- Grid Principal -->
+    <main class="app-grid">
+      
+      <!-- Lado Esquerdo: Monitoramento e Simulação -->
+      <div class="grid-column">
+        <!-- Card 1: Simulador de Eventos da Receita Federal -->
+        <section class="glass-card">
+          <div class="card-header">
+            <h2>🧪 Simulador de Webhook (Receita Federal)</h2>
+            <p>Simule a chamada assíncrona da Receita Federal que envia o tíquete gerado.</p>
+          </div>
+          <form id="simulator-form" class="sim-form">
+            <div class="form-group">
+              <label for="cnpj">CNPJ (Apenas números - 8 a 14 dígitos)</label>
+              <input type="text" id="cnpj" name="cnpj" placeholder="Ex: 12345678" required>
+            </div>
+            <div class="form-group">
+              <label for="tiquete">Tíquete de Download</label>
+              <input type="text" id="tiquete" name="tiquete" placeholder="Ex: tq_9f2a8c3d0b1e4c85" required>
+            </div>
+            <div class="form-group">
+              <label for="secret">Segredo do Webhook (WEBHOOK_SECRET)</label>
+              <input type="password" id="secret" name="secret" placeholder="Digite o token de segurança do webhook" required>
+            </div>
+            <button type="submit" class="btn-primary" id="btn-simular">
+              <span>Enviar Simulação</span>
+              <span class="btn-icon">🚀</span>
+            </button>
+          </form>
+          <div id="sim-feedback" class="feedback-msg hidden"></div>
+        </section>
+
+        <!-- Card 2: Consulta Rápida de Tíquete -->
+        <section class="glass-card">
+          <div class="card-header">
+            <h2>🔍 Consulta Reativa de Tíquete</h2>
+            <p>Consulte e execute a higienização (deleção automática) de tíquetes pendentes na nuvem.</p>
+          </div>
+          <form id="check-form" class="sim-form">
+            <div class="form-group">
+              <label for="check-cnpj">CNPJ da Empresa</label>
+              <input type="text" id="check-cnpj" name="cnpj" placeholder="Ex: 12345678" required>
+            </div>
+            <div class="form-group">
+              <label for="check-secret">Segredo de Autorização Bearer</label>
+              <input type="password" id="check-secret" name="secret" placeholder="Mesmo WEBHOOK_SECRET cadastrado" required>
+            </div>
+            <button type="submit" class="btn-secondary" id="btn-consultar">
+              <span>Consultar & Consumir</span>
+              <span class="btn-icon">👁️</span>
+            </button>
+          </form>
+          <div id="check-feedback" class="feedback-msg hidden"></div>
+        </section>
+      </div>
+
+      <!-- Lado Direito: Arquitetura e Monitor de Logs -->
+      <div class="grid-column">
+        <!-- Card 3: Status dos Fluxos e Próximos Passos -->
+        <section class="glass-card progress-card">
+          <div class="card-header">
+            <h2>⚙️ Pipeline de Integração CBS</h2>
+            <p>Entenda em que fase de execução está o seu fluxo local-nuvem.</p>
+          </div>
+          <div class="pipeline-steps">
+            <div class="step-item active">
+              <div class="step-number">1</div>
+              <div class="step-details">
+                <h3>Fase 1: Infraestrutura (Vercel & Supabase)</h3>
+                <p>O Webhook na nuvem recebe as notificações assíncronas.</p>
+              </div>
+            </div>
+            <div class="step-item">
+              <div class="step-number">2</div>
+              <div class="step-details">
+                <h3>Fase 2: Motor Local (Localhost)</h3>
+                <p>Gera o Token OAuth2 e envia a requisição para a Receita.</p>
+              </div>
+            </div>
+            <div class="step-item">
+              <div class="step-number">3</div>
+              <div class="step-details">
+                <h3>Fase 3: Polling Reativo</h3>
+                <p>O motor local faz consultas ao webhook até obter o tíquete.</p>
+              </div>
+            </div>
+            <div class="step-item">
+              <div class="step-number">4</div>
+              <div class="step-details">
+                <h3>Fase 4: Consumo e Limpeza</h3>
+                <p>O motor baixa os débitos da CBS e o webhook deleta o tíquete (LGPD).</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Card 4: Monitor de Eventos Locais -->
+        <section class="glass-card log-card">
+          <div class="card-header">
+            <h2>📋 Log de Atividades da Interface</h2>
+            <button class="btn-text" id="btn-clear-logs">Limpar Logs</button>
+          </div>
+          <div class="log-screen" id="log-screen">
+            <div class="log-line system">[SISTEMA] Painel carregado. Pronto para simular requisições de webhook.</div>
+          </div>
+        </section>
+      </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>Desenvolvido para conformidade fiscal da CBS — Receita Federal do Brasil</p>
+      <p class="footer-links">
+        <a href="guia_execucao.md" target="_blank">Manual de Execução</a> • 
+        <a href="arquitetura.md" target="_blank">Arquitetura de Integração</a>
+      </p>
+    </footer>
+  </div>
+
+  <!-- JavaScript do Aplicativo -->
+  <script src="app.js"></script>
+</body>
+</html>
