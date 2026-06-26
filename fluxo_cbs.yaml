@@ -1,0 +1,58 @@
+version: "1.0.0"
+title: "Fluxo de Apuração Assistida da CBS (Receita Federal)"
+description: "Mapeamento dos 3 passos necessários para autenticação, solicitação de processamento e download de débitos."
+passos_integracao:
+  - passo: 1
+    nome: "Autenticar (Obter Token)"
+    descricao: "Realiza a autenticação HTTP Basic para obter a chave de acesso (token) temporária."
+    endpoint: "https://api.receitafederal.gov.br/token"
+    metodo: "POST"
+    entradas:
+      headers:
+        Authorization: "Basic Base64(ClientID:ClientSecret)"
+        Content-Type: "application/x-www-form-urlencoded"
+      body:
+        grant_type: "client_credentials"
+    retornos:
+      status: 200
+      dados: "access_token e expires_in"
+    regras:
+      - "O token gerado é válido por apenas 1 hora [3]."
+      - "O motor local deve persistir o token em cache e renová-lo somente se expirado [3]."
+  - passo: 2
+    nome: "Solicitar (Obter Tíquete)"
+    descricao: "Dispara a solicitação assíncrona de processamento dos débitos enviando o webhook."
+    endpoint: "https://api.receitafederal.gov.br/rtc/apuracao-cbs/v1/{cnpj}"
+    metodo: "POST"
+    entradas:
+      url_params:
+        cnpj: "Inscrição base do CNPJ (exatamente os 8 primeiros dígitos) [3, 4]."
+      headers:
+        Authorization: "Bearer {token}"
+        Content-Type: "application/json"
+      body:
+        urlRetorno: "URL do webhook na nuvem (Vercel) [3]."
+    retornos:
+      status: 201
+      mensagem: "Solicitação aceita. Tíquete será retornado no Webhook [3]."
+    regras:
+      - "O acesso é estritamente limitado a 2 chamadas por dia por CNPJ [3, 5]."
+      - "Exceder a cota retornará o erro 429 (Too Many Requests) [3, 5]."
+  - passo: 3
+    nome: "Baixar (Download do JSON)"
+    descricao: "Realiza o download final dos débitos de CBS utilizando o tíquete capturado."
+    endpoint: "https://api.receitafederal.gov.br/rtc/download/v1/{tiquete}"
+    metodo: "GET"
+    entradas:
+      url_params:
+        tiquete: "Código identificador do tíquete capturado no Passo 2 [3]."
+      headers:
+        Authorization: "Bearer {token}"
+        Accept: "application/json"
+    retornos:
+      status: 200
+      dados: "Arquivo JSON estruturado com a relação detalhada de débitos de CBS [3]."
+    regras:
+      - "Permitido no máximo 8 downloads por dia para o mesmo tíquete [3, 6]."
+      - "O arquivo fica disponível nos servidores por até 24 horas a partir da geração [3, 7]."
+      - "O token OAuth2 DEVE estar válido no momento do download (refazer Passo 1 caso as horas de espera pelo tíquete tenham expirado o token) [3]."

@@ -93,10 +93,15 @@ async function run() {
       console.log(`👉 Enviando POST para: ${apuracaoUrl}`);
       console.log(`👉 Webhook que receberá o tíquete: ${webhookUrl}`);
 
+      // Como a Receita pode não devolver o CNPJ no payload do Webhook, injetamos ele na URL de retorno
+      const urlRetornoComCnpj = webhookUrl.includes('?') 
+        ? `${webhookUrl}&cnpj=${cnpj}`
+        : `${webhookUrl}?cnpj=${cnpj}`;
+
       // Chamada HTTP para a Receita Federal informando o webhook da Vercel
       const responseSolicitacao = await axios.post(
         apuracaoUrl,
-        { urlRetorno: webhookUrl },
+        { urlRetorno: urlRetornoComCnpj },
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -111,17 +116,21 @@ async function run() {
       const respostaBody = responseSolicitacao.data;
       console.log(`[Debug] Corpo da resposta da Receita Federal:`, JSON.stringify(respostaBody, null, 2));
 
+      let tiqueteSolicitacao: string | null = null;
       if (respostaBody && respostaBody.tiquete) {
-        console.log(`✓ Tíquete recebido diretamente na resposta do POST: ${respostaBody.tiquete}`);
-        // Salva o tíquete no cache local para uso futuro
+        tiqueteSolicitacao = respostaBody.tiquete;
+        console.log(`✓ Tíquete de solicitação (protocolo) recebido na resposta do POST: ${tiqueteSolicitacao}`);
+        
+        // Salva o tíquete de solicitação no cache local para referência
         fs.writeFileSync(tiqueteCachePath, JSON.stringify({
           cnpj,
           empresa: empresaSelecionada.empresa,
-          tiquete: respostaBody.tiquete,
-          timestamp: new Date().toISOString()
+          tiquete_solicitacao: tiqueteSolicitacao,
+          tiquete_download: null,
+          timestamp_solicitacao: new Date().toISOString()
         }, null, 2), 'utf-8');
       } else {
-        console.log('[Info] A resposta do POST não continha o tíquete diretamente. Verificaremos o webhook e o cache local.');
+        console.log('[Info] A resposta do POST não continha o tíquete de solicitação.');
       }
 
       // Registra a chamada com sucesso no circuit breaker
@@ -130,25 +139,28 @@ async function run() {
       console.log('[Passo 3/5] Pulado por solicitação do usuário (reutilizando disparo anterior).');
     }
 
-    // 5. Passo 4: Obter o tíquete (cache local OU polling no webhook)
-    let tiquete: string | null = null;
+    // 5. Passo 4: Obter o tíquete de download (cache local OU polling no webhook)
+    let tiqueteDownload: string | null = null;
 
-    // Estratégia 1: Verificar se o tíquete já está salvo no cache local (retornado no POST 201)
+    // Estratégia 1: Verificar se o tíquete de download já está salvo no cache local (recebido do webhook anteriormente)
     if (fs.existsSync(tiqueteCachePath)) {
       try {
         const cacheData = JSON.parse(fs.readFileSync(tiqueteCachePath, 'utf-8'));
-        if (cacheData.cnpj === cnpj && cacheData.tiquete) {
-          tiquete = cacheData.tiquete;
-          console.log(`✓ [Passo 4/5] Tíquete encontrado no cache local: ${tiquete}`);
-          console.log('Pulando polling no webhook. O tíquete já foi recebido diretamente da Receita Federal.');
+        if (cacheData.cnpj === cnpj && cacheData.tiquete_download) {
+          tiqueteDownload = cacheData.tiquete_download;
+          console.log(`✓ [Passo 4/5] Tíquete de download ativo encontrado no cache local: ${tiqueteDownload}`);
+          console.log('Pulando polling no webhook. O processamento já foi confirmado como concluído.');
+        } else if (cacheData.cnpj === cnpj && cacheData.tiquete_solicitacao) {
+          console.log(`[Info] Tíquete de solicitação (${cacheData.tiquete_solicitacao}) encontrado no cache local.`);
+          console.log('Aguardando a confirmação do processamento via webhook (Supabase)...');
         }
       } catch (e) {
         // Cache inválido, prosseguir com o polling
       }
     }
 
-    // Estratégia 2 (Fallback): Polling no webhook da Vercel/Supabase
-    if (!tiquete) {
+    // Estratégia 2: Polling no webhook da Vercel/Supabase
+    if (!tiqueteDownload) {
       console.log('[Passo 4/5] Aguardando processamento da Receita Federal...');
       console.log(`Iniciando polling em seu webhook na nuvem (${vercelApiUrl}/api/tiquete)...`);
 
@@ -171,8 +183,26 @@ async function run() {
           );
 
           if (responsePolling.data.status === 'completed' && responsePolling.data.tiquete) {
-            tiquete = responsePolling.data.tiquete;
-            console.log(`✓ Tiquete obtido com sucesso da nuvem: ${tiquete}`);
+            tiqueteDownload = responsePolling.data.tiquete;
+            console.log(`✓ Tíquete de download obtido com sucesso do webhook: ${tiqueteDownload}`);
+            
+            // Grava ou atualiza o cache local marcando o tiquete_download como disponível
+            try {
+              let cacheExistente: any = {};
+              if (fs.existsSync(tiqueteCachePath)) {
+                cacheExistente = JSON.parse(fs.readFileSync(tiqueteCachePath, 'utf-8'));
+              }
+              fs.writeFileSync(tiqueteCachePath, JSON.stringify({
+                cnpj,
+                empresa: empresaSelecionada.empresa,
+                tiquete_solicitacao: cacheExistente.tiquete_solicitacao || null,
+                tiquete_download: tiqueteDownload,
+                timestamp_solicitacao: cacheExistente.timestamp_solicitacao || null,
+                timestamp_download: new Date().toISOString()
+              }, null, 2), 'utf-8');
+            } catch (e) {
+              // ignore erro de escrita
+            }
             break;
           }
 
@@ -185,29 +215,73 @@ async function run() {
       }
     }
 
-    if (!tiquete) {
-      console.error('❌ Timeout de processamento atingido. O tiquete nao foi entregue pela Receita Federal em 10 minutos.');
-      console.error('💡 Dica: Verifique os logs da Vercel para ver se a Receita tentou chamar o webhook.');
+    if (!tiqueteDownload) {
+      console.error('❌ Timeout de processamento atingido. O webhook da Receita Federal não entregou o tíquete de download em 10 minutos.');
+      console.error('💡 Dica: Verifique se os servidores da Receita Federal já enviaram o callback para seu webhook na Vercel.');
       process.exit(1);
     }
 
     // 6. Passo 5: Download do JSON Final de Débitos
     console.log('[Passo 5/5] Iniciando download do JSON final de debitos de CBS...');
     
-    // Pega o token OAuth2 novamente (se expirou na espera, o servico renova automaticamente)
-    const activeToken = await AuthService.getAccessToken(rfClientId, rfClientSecret);
-    const downloadUrl = `${rfBaseUrl}${prefixoRtc}/download/v1/${tiquete}`;
-    console.log(`[Download] Solicitando download do arquivo de débitos à Receita Federal...`);
+    const downloadUrl = `${rfBaseUrl}${prefixoRtc}/download/v1/${tiqueteDownload}`;
+    let debitosData: any = null;
+    let maxRetries = 2; // Apenas para instabilidade de rede ou renovação de token expirado, não para processamento
+    let retryCount = 0;
 
-    const responseDownload = await axios.get(downloadUrl, {
-      headers: {
-        Authorization: `Bearer ${activeToken}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json'
+    console.log(`[Download] Tíquete: ${tiqueteDownload}`);
+    console.log(`[Download] URL: ${downloadUrl}`);
+
+    while (retryCount <= maxRetries) {
+      const horaAtual = new Date().toLocaleTimeString('pt-BR');
+      const activeToken = await AuthService.getAccessToken(rfClientId, rfClientSecret);
+
+      console.log(`[Download] [${horaAtual}] Solicitando arquivo à Receita Federal...`);
+
+      try {
+        const responseDownload = await axios.get(downloadUrl, {
+          headers: {
+            Authorization: `Bearer ${activeToken}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json'
+          }
+        });
+
+        debitosData = responseDownload.data;
+        console.log(`✓ Download concluído com sucesso! (Status: ${responseDownload.status})`);
+        break;
+
+      } catch (downloadErr: any) {
+        const status = downloadErr.response?.status;
+        const mensagem = downloadErr.response?.data;
+
+        if (status === 401 && typeof mensagem === 'string' && mensagem.includes('inexistente')) {
+          console.error(`❌ Erro no download: A Receita Federal retornou "inexistente ou download já realizado" (Status: 401).`);
+          console.error(`💡 Explicação: O tíquete de download expira em 24h ou o arquivo já foi baixado (limite de 1 download por tíquete atingido).`);
+          // Para imediatamente sem tentar de novo
+          break;
+        } else if (status === 401) {
+          console.log(`[Download] Token expirado ou inválido (401). Tentativa de renovação de token...`);
+          AuthService.clearCache(rfClientId); // Limpa o cache local para forçar buscar um novo na próxima iteração
+        } else if (status === 429) {
+          console.error(`❌ Limite de requisições excedido na API da Receita Federal (Status: 429):`, JSON.stringify(mensagem));
+          break;
+        } else {
+          console.error(`❌ Erro inesperado no download (Status: ${status}):`, JSON.stringify(mensagem));
+        }
       }
-    });
 
-    const debitosData = responseDownload.data;
+      retryCount++;
+      if (retryCount <= maxRetries && !debitosData) {
+        console.log(`Aguardando 5 segundos antes de tentar novamente...`);
+        await sleep(5000);
+      }
+    }
+
+    if (!debitosData) {
+      console.error('❌ Falha no download dos débitos de CBS. A operação não pôde ser concluída.');
+      process.exit(1);
+    }
 
     // Criar pasta de downloads locais se nao existir
     const downloadsDir = path.resolve(__dirname, '../downloads');
@@ -222,6 +296,16 @@ async function run() {
     const filePath = path.join(downloadsDir, fileName);
 
     fs.writeFileSync(filePath, JSON.stringify(debitosData, null, 2), 'utf-8');
+
+    // Remove o cache do tíquete local para que a próxima apuração inicie limpa
+    if (fs.existsSync(tiqueteCachePath)) {
+      try {
+        fs.unlinkSync(tiqueteCachePath);
+        console.log('✓ Cache local do tíquete higienizado (removido) com sucesso.');
+      } catch (e) {
+        // ignorar erros de deleção
+      }
+    }
 
     console.log('===============================================================');
     console.log('✓ OPERAÇÃO CONCLUÍDA COM SUCESSO!');

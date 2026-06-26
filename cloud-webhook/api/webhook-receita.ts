@@ -2,16 +2,17 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { z } from 'zod';
 import { salvarTiquete } from './_supabase';
 
-// Schema para validacao robusta do payload da Receita Federal
-const webhookPayloadSchema = z.object({
-  cnpj: z.string().min(8).max(14).regex(/^\d+$/, 'O CNPJ deve conter apenas numeros.'),
-  tiquete: z.string().min(5, 'O tiquete deve ter pelo menos 5 caracteres.')
-});
+// Removemos o Zod estrito porque a Receita pode mandar formatos inesperados.
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // A Receita Federal costuma fazer um HEAD request antes do POST para verificar se o endpoint existe
+  if (req.method === 'HEAD') {
+    return res.status(200).end();
+  }
+
   // Garantir apenas requisicoes POST
   if (req.method !== 'POST') {
-    return res.status(451).json({ error: 'Metodo nao permitido. Utilize POST.' });
+    return res.status(405).json({ error: 'Metodo nao permitido. Utilize POST.' });
   }
 
   // 1. Validacao de Seguranca (Token Secreto)
@@ -29,17 +30,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // 2. Validacao do Payload estrutural usando Zod
-    const validation = webhookPayloadSchema.safeParse(req.body);
-    
-    if (!validation.success) {
-      return res.status(400).json({ 
-        error: 'Payload invalido. Verifique o formato do JSON.', 
-        details: validation.error.format() 
-      });
+    // 2. Extração Flexível do Payload
+    // A Receita pode não mandar o CNPJ no body, então pegamos da querystring se enviarmos na hora da solicitação
+    const cnpj = (req.body?.cnpj || req.query.cnpj)?.toString();
+    const tiquete = req.body?.tiquete || req.body?.id || req.body?.ticket || req.body?.protocolo || (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
+
+    if (!cnpj || !/^\d+$/.test(cnpj)) {
+      console.error(`Erro no Webhook: CNPJ não identificado no payload ou querystring. Payload:`, req.body);
+      return res.status(400).json({ error: 'CNPJ nao identificado. Verifique se o urlRetorno inclui ?cnpj=...' });
     }
 
-    const { cnpj, tiquete } = validation.data;
+    if (!tiquete || tiquete.length < 5) {
+      console.error(`Erro no Webhook: Tíquete não identificado. Payload:`, req.body);
+      return res.status(400).json({ error: 'Tiquete nao identificado no payload.' });
+    }
 
     // 3. Persistir o tiquete de forma temporaria
     await salvarTiquete(cnpj, tiquete);

@@ -172,5 +172,24 @@ export class AuthService {
       console.error('[Auth] Erro critico ao salvar cache de token em disco:', error);
     }
   }
+
+  /**
+   * Remove o cache de token do arquivo local (força renovação)
+   */
+  public static clearCache(overrideClientId?: string): void {
+    const clientId = overrideClientId || process.env.RF_CLIENT_ID;
+    if (clientId) {
+      const clientHash = clientId.substring(0, 8);
+      const cacheFilePathEmpresa = path.resolve(__dirname, `../../token_cache_${clientHash}.json`);
+      if (fs.existsSync(cacheFilePathEmpresa)) {
+        try {
+          fs.unlinkSync(cacheFilePathEmpresa);
+          console.log(`[Auth] Cache de token local removido para forçar renovação (${clientHash}...).`);
+        } catch (error) {
+          console.warn('[Auth] Aviso: Falha ao remover cache de token local.', error);
+        }
+      }
+    }
+  }
 }
 
