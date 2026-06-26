@@ -152,14 +152,14 @@ async function run() {
           console.log('Pulando polling no webhook. O processamento já foi confirmado como concluído.');
         } else if (cacheData.cnpj === cnpj && cacheData.tiquete_solicitacao) {
           console.log(`[Info] Tíquete de solicitação (${cacheData.tiquete_solicitacao}) encontrado no cache local.`);
-          console.log('Aguardando a confirmação do processamento via webhook (Supabase)...');
+          console.log('Aguardando a confirmação do processamento via webhook (Redis)...');
         }
       } catch (e) {
         // Cache inválido, prosseguir com o polling
       }
     }
 
-    // Estratégia 2: Polling no webhook da Vercel/Supabase
+    // Estratégia 2: Polling no webhook da Vercel/Redis
     if (!tiqueteDownload) {
       console.log('[Passo 4/5] Aguardando processamento da Receita Federal...');
       console.log(`Iniciando polling em seu webhook na nuvem (${vercelApiUrl}/api/tiquete)...`);

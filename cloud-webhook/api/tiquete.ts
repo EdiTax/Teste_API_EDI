@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { obterEDeletarTiquete } from './_supabase';
+import { obterEDeletarTiquete } from './_redis';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Garantir apenas requisicoes GET para consulta

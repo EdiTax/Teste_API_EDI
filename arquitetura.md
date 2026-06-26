@@ -112,7 +112,8 @@ Esta é a aplicação que rodará no ambiente local (ou no servidor interno da e
   RF_WEBHOOK_URL=https://sua-api.vercel.app/api/webhook-receita
   RF_BASE_URL=https://api.receitafederal.gov.br
   DATABASE_URL=postgresql://localhost:5432/apuracao_local
-  CLOUD_DB_URL=redis://default:senha@host:porta
+  KV_REST_API_URL=https://host-do-upstash-ou-vercel.upstash.io
+  KV_REST_API_TOKEN=seu_token_aqui
   ```
 
 #### Passo 3: Autenticação (OAuth2)
