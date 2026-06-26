@@ -36,7 +36,7 @@ fases:
     tecnologias_sugeridas:
       - "Next.js (Serverless Functions) ou Fastify"
       - "TypeScript"
-      - "Vercel KV (Redis) ou Supabase (PostgreSQL)"
+      - "Upstash Redis (ou Vercel KV)"
     passos:
       - passo: 1
         titulo: "Criacao da Serverless Function na Vercel"
@@ -48,7 +48,7 @@ fases:
           - "Implementar HTTPS e TLS 1.3 como protocolo minimo."
           - "Limitar o tamanho do payload (max 10KB) para mitigar ataques de negacao de servico (DoS)."
         logica: "Capturar o tiquete de processamento contido no payload e persistir temporariamente em nuvem."
-        armazenamento: "Vercel KV (Redis) com TTL (Time-To-Live) de 24h ou Supabase com limpeza automatica."
+        armazenamento: "Vercel KV (Redis) ou Upstash com TTL (Time-To-Live) de 24h."
 
   - fase: 2
     nome: "Motor Local (Aplicacao Localhost)"

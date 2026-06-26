@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { z } from 'zod';
-import { salvarTiquete } from './_supabase';
+import { salvarTiquete } from './_redis';
 
 // Removemos o Zod estrito porque a Receita pode mandar formatos inesperados.
 
