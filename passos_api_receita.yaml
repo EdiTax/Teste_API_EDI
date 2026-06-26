@@ -1,0 +1,69 @@
+version: "1.0.0"
+title: "Fluxo de Apuração Assistida da CBS (Receita Federal)"
+description: "Mapeamento dos 3 passos necessários para autenticação, solicitação de processamento e download de débitos."
+
+passos_integracao:
+  - passo: 1
+    nome: "Autenticar (Obter Token)"
+    descricao: "Realiza a autenticação HTTP Basic utilizando as credenciais da empresa/procurador para obter uma chave de acesso (token) temporária."
+    endpoint: "https://api.receitafederal.gov.br/token"
+    metodo: "POST"
+    entradas:
+      headers:
+        Authorization: "Basic <Base64(ClientID:ClientSecret)>"
+        Content-Type: "application/x-www-form-urlencoded"
+      body:
+        grant_type: "client_credentials"
+    retornos:
+      sucesso:
+        status: 200
+        dados:
+          access_token: "Chave de acesso criptográfica (token OAuth2)"
+          expires_in: 3600 # Segundos de validade (1 hora)
+    regras:
+      - "O token gerado é válido por 1 hora."
+      - "O motor local deve persistir o token em cache (token_cache.json) e renová-lo somente se expirado."
+
+  - passo: 2
+    nome: "Solicitar (Obter Tíquete)"
+    descricao: "Dispara a solicitação assíncrona de processamento dos débitos de CBS para o CNPJ informado, fornecendo o webhook de retorno."
+    endpoint: "https://api.receitafederal.gov.br/rtc/apuracao-cbs/v1/{cnpj}"
+    metodo: "POST"
+    entradas:
+      url_params:
+        cnpj: "Inscrição base do CNPJ (exatamente os 8 primeiros dígitos)"
+      headers:
+        Authorization: "Bearer {token}"
+        Content-Type: "application/json"
+      body:
+        urlRetorno: "URL do webhook na nuvem (Vercel) com token de segurança (WEBHOOK_SECRET)"
+    retornos:
+      sucesso:
+        status: 201
+        mensagem: "Solicitação aceita e tíquete agendado para processamento."
+      erro_limite:
+        status: 429
+        mensagem: "Too Many Requests (Limite diário excedido)"
+    regras:
+      - "O acesso a este endpoint é limitado a exatamente 2 chamadas/dia por CNPJ."
+      - "Para evitar estouro de cota (erro 429), o motor local deve permitir pular esta etapa se um disparo 201 já foi feito no dia."
+
+  - passo: 3
+    nome: "Baixar (Download do JSON)"
+    descricao: "Realiza o download final dos débitos de CBS processados utilizando o tíquete retornado pela Receita Federal no webhook."
+    endpoint: "https://api.receitafederal.gov.br/rtc/download/v1/{tiquete}"
+    metodo: "GET"
+    entradas:
+      url_params:
+        tiquete: "Código identificador do tíquete enviado anteriormente pela Receita Federal ao Webhook"
+      headers:
+        Authorization: "Bearer {token}"
+        Accept: "application/json"
+    retornos:
+      sucesso:
+        status: 200
+        dados: "Arquivo JSON estruturado contendo a relação detalhada de débitos de CBS do período"
+    regras:
+      - "Permitido no máximo 8 downloads por tíquete."
+      - "O arquivo fica disponível nos servidores da Receita Federal por até 24 horas a partir da geração."
+      - "O token de autenticação deve estar válido no momento do download. Caso tenha expirado durante a espera do tíquete, gera-se um novo token (Passo 1) para assinar esta chamada."
