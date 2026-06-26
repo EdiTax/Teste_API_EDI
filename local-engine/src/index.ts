@@ -71,6 +71,9 @@ async function run() {
     const tokenMascarado = `${accessToken.substring(0, 8)}...${accessToken.substring(accessToken.length - 8)}`;
     console.log(`✓ Token OAuth2 obtido com sucesso: [ ${tokenMascarado} ]`);
 
+    // Arquivo local para persistir o tíquete recebido no POST 201
+    const tiqueteCachePath = path.resolve(__dirname, '../tiquete_cache.json');
+
     if (!pularEnvio) {
       // 4. Passo 3: Disparar Solicitacao de Apuracao Assincrona na Receita
       console.log(`[Passo 3/5] Disparando solicitacao de apuracao de débitos para ${cnpj} (${process.env.RF_AMBIENTE || 'producao'})...`);
@@ -92,51 +95,82 @@ async function run() {
 
       console.log(`✓ Solicitacao aceita pela Receita Federal (Status: ${responseSolicitacao.status}).`);
       
+      // CAPTURAR O TÍQUETE DIRETAMENTE DA RESPOSTA 201
+      const respostaBody = responseSolicitacao.data;
+      console.log(`[Debug] Corpo da resposta da Receita Federal:`, JSON.stringify(respostaBody, null, 2));
+
+      if (respostaBody && respostaBody.tiquete) {
+        console.log(`✓ Tíquete recebido diretamente na resposta do POST: ${respostaBody.tiquete}`);
+        // Salva o tíquete no cache local para uso futuro
+        fs.writeFileSync(tiqueteCachePath, JSON.stringify({ cnpj, tiquete: respostaBody.tiquete, timestamp: new Date().toISOString() }, null, 2), 'utf-8');
+      } else {
+        console.log('[Info] A resposta do POST não continha o tíquete diretamente. Verificaremos o webhook e o cache local.');
+      }
+
       // Registra a chamada com sucesso no circuit breaker
       CircuitBreakerService.registrarDisparo(cnpj);
     } else {
       console.log('[Passo 3/5] Pulado por solicitação do usuário (reutilizando disparo anterior).');
     }
 
-    // 5. Passo 4: Sincronizacao / Polling na nuvem
-    console.log('[Passo 4/5] Aguardando processamento da Receita Federal...');
-    console.log(`Iniciando polling em seu webhook na nuvem (${vercelApiUrl}/api/tiquete)...`);
-
+    // 5. Passo 4: Obter o tíquete (cache local OU polling no webhook)
     let tiquete: string | null = null;
-    let tentativas = 0;
 
-    while (tentativas < MAX_POLLING_ATTEMPTS) {
-      tentativas++;
-      const horaAtual = new Date().toLocaleTimeString('pt-BR');
-      console.log(`[Polling] [${horaAtual}] Tentativa ${tentativas}/${MAX_POLLING_ATTEMPTS} - Consultando tiquete na nuvem...`);
-
+    // Estratégia 1: Verificar se o tíquete já está salvo no cache local (retornado no POST 201)
+    if (fs.existsSync(tiqueteCachePath)) {
       try {
-        const responsePolling = await axios.get<{ status: 'pending' | 'completed'; tiquete?: string }>(
-          `${vercelApiUrl}/api/tiquete`,
-          {
-            params: { cnpj },
-            headers: {
-              Authorization: `Bearer ${webhookSecret}`
-            }
-          }
-        );
+        const cacheData = JSON.parse(fs.readFileSync(tiqueteCachePath, 'utf-8'));
+        if (cacheData.cnpj === cnpj && cacheData.tiquete) {
+          tiquete = cacheData.tiquete;
+          console.log(`✓ [Passo 4/5] Tíquete encontrado no cache local: ${tiquete}`);
+          console.log('Pulando polling no webhook. O tíquete já foi recebido diretamente da Receita Federal.');
+        }
+      } catch (e) {
+        // Cache inválido, prosseguir com o polling
+      }
+    }
 
-        if (responsePolling.data.status === 'completed' && responsePolling.data.tiquete) {
-          tiquete = responsePolling.data.tiquete;
-          console.log(`✓ Tiquete obtido com sucesso da nuvem: ${tiquete}`);
-          break;
+    // Estratégia 2 (Fallback): Polling no webhook da Vercel/Supabase
+    if (!tiquete) {
+      console.log('[Passo 4/5] Aguardando processamento da Receita Federal...');
+      console.log(`Iniciando polling em seu webhook na nuvem (${vercelApiUrl}/api/tiquete)...`);
+
+      let tentativas = 0;
+
+      while (tentativas < MAX_POLLING_ATTEMPTS) {
+        tentativas++;
+        const horaAtual = new Date().toLocaleTimeString('pt-BR');
+        console.log(`[Polling] [${horaAtual}] Tentativa ${tentativas}/${MAX_POLLING_ATTEMPTS} - Consultando tiquete na nuvem...`);
+
+        try {
+          const responsePolling = await axios.get<{ status: 'pending' | 'completed'; tiquete?: string }>(
+            `${vercelApiUrl}/api/tiquete`,
+            {
+              params: { cnpj },
+              headers: {
+                Authorization: `Bearer ${webhookSecret}`
+              }
+            }
+          );
+
+          if (responsePolling.data.status === 'completed' && responsePolling.data.tiquete) {
+            tiquete = responsePolling.data.tiquete;
+            console.log(`✓ Tiquete obtido com sucesso da nuvem: ${tiquete}`);
+            break;
+          }
+
+          console.log(`→ Servidor retornou: Processamento pendente na Receita Federal. Aguardando ${POLLING_INTERVAL_MS / 1000}s...`);
+        } catch (err: any) {
+          console.warn(`[Aviso] Falha na conexao com o webhook na Vercel: ${err.message}. Tentando novamente na proxima iteracao.`);
         }
 
-        console.log(`→ Servidor retornou: Processamento pendente na Receita Federal. Aguardando ${POLLING_INTERVAL_MS / 1000}s...`);
-      } catch (err: any) {
-        console.warn(`[Aviso] Falha na conexao com o webhook na Vercel: ${err.message}. Tentando novamente na proxima iteracao.`);
+        await sleep(POLLING_INTERVAL_MS);
       }
-
-      await sleep(POLLING_INTERVAL_MS);
     }
 
     if (!tiquete) {
       console.error('❌ Timeout de processamento atingido. O tiquete nao foi entregue pela Receita Federal em 10 minutos.');
+      console.error('💡 Dica: Verifique os logs da Vercel para ver se a Receita tentou chamar o webhook.');
       process.exit(1);
     }
 
