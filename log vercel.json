@@ -1,0 +1,32 @@
+[
+    {
+        "event_message": "dcbfyacvtczsfporsywg | GET | 200 | 10.108.36.151 | req-9jz | /tenants/dcbfyacvtczsfporsywg | @supabase-infra/mgmt-api/2df7758",
+        "id": "292f0b5d-7be0-4b15-a6be-acfdd94701e1",
+        "timestamp": 1782436435940000
+    },
+    {
+        "event_message": "dcbfyacvtczsfporsywg | GET | 200 | 10.108.36.151 | req-97n | /tenants/dcbfyacvtczsfporsywg | @supabase-infra/mgmt-api/2df7758",
+        "id": "94ae0334-330d-4158-a25c-0ee7c4c29348",
+        "timestamp": 1782435792968000
+    },
+    {
+        "event_message": "dcbfyacvtczsfporsywg | GET | 200 | 10.108.90.7 | req-8ty | /tenants/dcbfyacvtczsfporsywg | @supabase-infra/mgmt-api/2df7758",
+        "id": "16188202-74fb-4516-9300-8a42e2f29cdb",
+        "timestamp": 1782435013824000
+    },
+    {
+        "event_message": "dcbfyacvtczsfporsywg | GET | 200 | 10.108.90.7 | req-9qe | /tenants/dcbfyacvtczsfporsywg | @supabase-infra/mgmt-api/2df7758",
+        "id": "c9491ebf-3b80-4f3c-a2a5-08c52b216a6f",
+        "timestamp": 1782435012039000
+    },
+    {
+        "event_message": "dcbfyacvtczsfporsywg | GET | 200 | 10.108.36.151 | req-1i8v | /tenants/dcbfyacvtczsfporsywg | @supabase-infra/mgmt-api/2df7758",
+        "id": "7b043124-934c-4405-a456-e488e7bdbdb3",
+        "timestamp": 1782434629072000
+    },
+    {
+        "event_message": "dcbfyacvtczsfporsywg | GET | 200 | 10.108.16.11 | req-84w | /tenants/dcbfyacvtczsfporsywg | @supabase-infra/mgmt-api/2df7758",
+        "id": "113f952f-9480-475f-ba1a-61138ae6d8fe",
+        "timestamp": 1782433375456000
+    }
+]

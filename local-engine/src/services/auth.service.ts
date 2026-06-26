@@ -62,19 +62,22 @@ export class AuthService {
   /**
    * Obtem o token de acesso OAuth2 valido, renovando proativamente se estiver expirado ou perto de expirar.
    * Utiliza cache em disco (token_cache.json) para persistir entre reinicializacoes da aplicacao.
+   * 
+   * @param overrideClientId - Client ID (se fornecido, sobrescreve o .env)
+   * @param overrideClientSecret - Client Secret (se fornecido, sobrescreve o .env)
    */
-  public static async getAccessToken(): Promise<string> {
-    let clientId = process.env.RF_CLIENT_ID;
-    let clientSecret = process.env.RF_CLIENT_SECRET;
+  public static async getAccessToken(overrideClientId?: string, overrideClientSecret?: string): Promise<string> {
+    let clientId = overrideClientId || process.env.RF_CLIENT_ID;
+    let clientSecret = overrideClientSecret || process.env.RF_CLIENT_SECRET;
 
-    // Pergunta de forma interativa se não estiver configurado no .env (segurança avançada)
+    // Pergunta de forma interativa se não estiver configurado
     if (!clientId) {
-      console.log('\n[Segurança] RF_CLIENT_ID não encontrado no arquivo .env.');
+      console.log('\n[Segurança] RF_CLIENT_ID não encontrado.');
       clientId = await this.promptQuestion('👉 Insira o seu Client ID da Receita Federal: ');
     }
 
     if (!clientSecret) {
-      console.log('[Segurança] RF_CLIENT_SECRET não encontrado no arquivo .env.');
+      console.log('[Segurança] RF_CLIENT_SECRET não encontrado.');
       clientSecret = await this.promptQuestion('👉 Insira o seu Client Secret da Receita Federal: ');
       console.log(''); // Pula linha
     }
@@ -85,13 +88,17 @@ export class AuthService {
       );
     }
 
+    // Cache separado por clientId para suportar múltiplas empresas
+    const clientHash = clientId.substring(0, 8);
+    const cacheFilePathEmpresa = path.resolve(__dirname, `../../token_cache_${clientHash}.json`);
+
     // Tenta ler o token previamente cacheado no disco
-    const cache = this.lerCacheDoDisco();
+    const cache = this.lerCacheDoDisco(cacheFilePathEmpresa);
     const bufferTimeMs = 5 * 60 * 1000; // 5 minutos de margem
     const now = Date.now();
 
     if (cache && now < cache.expiresAt - bufferTimeMs) {
-      console.log('[Auth] Utilizando token OAuth2 valido recuperado do cache em disco.');
+      console.log(`[Auth] Utilizando token OAuth2 valido recuperado do cache em disco (${clientHash}...).`);
       return cache.accessToken;
     }
 
@@ -127,8 +134,8 @@ export class AuthService {
       const durationSeconds = expires_in || 3600;
       const expiresAt = Date.now() + durationSeconds * 1000;
 
-      // Salva o token cacheado no disco
-      this.salvarCacheNoDisco({ accessToken: access_token, expiresAt });
+      // Salva o token cacheado no disco (separado por empresa)
+      this.salvarCacheNoDisco({ accessToken: access_token, expiresAt }, cacheFilePathEmpresa);
 
       console.log(`[Auth] Novo token OAuth2 obtido com sucesso. Expira em: ${new Date(expiresAt).toLocaleTimeString('pt-BR')}`);
       return access_token;
@@ -141,10 +148,11 @@ export class AuthService {
   /**
    * Le o cache de token do arquivo local.
    */
-  private static lerCacheDoDisco(): TokenCache | null {
+  private static lerCacheDoDisco(filePath?: string): TokenCache | null {
+    const caminhoCache = filePath || this.cacheFilePath;
     try {
-      if (fs.existsSync(this.cacheFilePath)) {
-        const fileContent = fs.readFileSync(this.cacheFilePath, 'utf-8');
+      if (fs.existsSync(caminhoCache)) {
+        const fileContent = fs.readFileSync(caminhoCache, 'utf-8');
         return JSON.parse(fileContent);
       }
     } catch (error) {
@@ -156,9 +164,10 @@ export class AuthService {
   /**
    * Grava o cache de token no arquivo local.
    */
-  private static salvarCacheNoDisco(cache: TokenCache): void {
+  private static salvarCacheNoDisco(cache: TokenCache, filePath?: string): void {
+    const caminhoCache = filePath || this.cacheFilePath;
     try {
-      fs.writeFileSync(this.cacheFilePath, JSON.stringify(cache, null, 2), 'utf-8');
+      fs.writeFileSync(caminhoCache, JSON.stringify(cache, null, 2), 'utf-8');
     } catch (error) {
       console.error('[Auth] Erro critico ao salvar cache de token em disco:', error);
     }

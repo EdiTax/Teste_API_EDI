@@ -6,6 +6,7 @@ import * as dotenv from 'dotenv';
 // Importa os servicos auxiliares
 import { AuthService } from './services/auth.service';
 import { CircuitBreakerService } from './services/circuit-breaker';
+import { EmpresaSelectorService, EmpresaConfig } from './services/empresa-selector.service';
 
 // Carrega as variaveis do arquivo .env
 dotenv.config();
@@ -22,7 +23,17 @@ async function run() {
   console.log('INICIANDO MOTOR LOCAL - APURAÇÃO ASSISTIDA CBS RECEITA FEDERAL');
   console.log('===============================================================');
 
-  const cnpj = process.env.CNPJ_APURACAO;
+  // ──────────────────────────────────────────────────
+  // ETAPA 0: Seleção interativa da empresa
+  // ──────────────────────────────────────────────────
+  const empresaSelecionada: EmpresaConfig = await EmpresaSelectorService.selecionarEmpresa();
+
+  // Usa as credenciais da empresa selecionada (sobrescreve .env)
+  const cnpj = empresaSelecionada.cnpj_base;
+  const rfClientId = empresaSelecionada.client_id;
+  const rfClientSecret = empresaSelecionada.client_secret;
+
+  // Configurações de infraestrutura (sempre do .env)
   const webhookUrl = process.env.RF_WEBHOOK_URL;
   const vercelApiUrl = process.env.VERCEL_API_URL;
   const webhookSecret = process.env.WEBHOOK_SECRET;
@@ -34,7 +45,7 @@ async function run() {
 
   // 1. Validacao de configuracoes do ambiente
   if (!cnpj || !/^\d{8}$/.test(cnpj)) {
-    console.error('ERRO CRITICO: CNPJ_APURACAO invalido ou ausente no .env. Deve conter exatamente os 8 primeiros digitos.');
+    console.error('ERRO CRITICO: CNPJ base invalido na empresa selecionada. Deve conter exatamente os 8 primeiros digitos.');
     process.exit(1);
   }
 
@@ -49,7 +60,7 @@ async function run() {
 
     if (ultimoDisparo) {
       const horaDisparo = new Date(ultimoDisparo).toLocaleTimeString('pt-BR');
-      console.log(`\n[Circuit Breaker] Detectamos que um disparo de apuração já foi realizado hoje às ${horaDisparo} para o CNPJ ${cnpj}.`);
+      console.log(`\n[Circuit Breaker] Detectamos que um disparo de apuração já foi realizado hoje às ${horaDisparo} para o CNPJ ${cnpj} (${empresaSelecionada.empresa}).`);
       console.log('Para evitar consumir o limite diário da Receita Federal (máx 2), você pode pular o envio e ir direto buscar o tíquete.');
       const resposta = await AuthService.promptQuestion('👉 Deseja reutilizar o disparo anterior e ir direto para o Polling? (S/N) [Padrão: S]: ');
       if (resposta.toLowerCase() !== 'n') {
@@ -66,13 +77,14 @@ async function run() {
     }
 
     // 3. Passo 2: Obter Token de Autenticacao OAuth2
-    console.log('[Passo 2/5] Solicitando token de autenticacao OAuth2 da Receita Federal...');
-    const accessToken = await AuthService.getAccessToken();
+    // Passa as credenciais da empresa selecionada (não do .env)
+    console.log(`[Passo 2/5] Solicitando token de autenticacao OAuth2 da Receita Federal para ${empresaSelecionada.empresa}...`);
+    const accessToken = await AuthService.getAccessToken(rfClientId, rfClientSecret);
     const tokenMascarado = `${accessToken.substring(0, 8)}...${accessToken.substring(accessToken.length - 8)}`;
     console.log(`✓ Token OAuth2 obtido com sucesso: [ ${tokenMascarado} ]`);
 
-    // Arquivo local para persistir o tíquete recebido no POST 201
-    const tiqueteCachePath = path.resolve(__dirname, '../tiquete_cache.json');
+    // Arquivo local para persistir o tíquete recebido no POST 201 (separado por CNPJ)
+    const tiqueteCachePath = path.resolve(__dirname, `../tiquete_cache_${cnpj}.json`);
 
     if (!pularEnvio) {
       // 4. Passo 3: Disparar Solicitacao de Apuracao Assincrona na Receita
@@ -102,7 +114,12 @@ async function run() {
       if (respostaBody && respostaBody.tiquete) {
         console.log(`✓ Tíquete recebido diretamente na resposta do POST: ${respostaBody.tiquete}`);
         // Salva o tíquete no cache local para uso futuro
-        fs.writeFileSync(tiqueteCachePath, JSON.stringify({ cnpj, tiquete: respostaBody.tiquete, timestamp: new Date().toISOString() }, null, 2), 'utf-8');
+        fs.writeFileSync(tiqueteCachePath, JSON.stringify({
+          cnpj,
+          empresa: empresaSelecionada.empresa,
+          tiquete: respostaBody.tiquete,
+          timestamp: new Date().toISOString()
+        }, null, 2), 'utf-8');
       } else {
         console.log('[Info] A resposta do POST não continha o tíquete diretamente. Verificaremos o webhook e o cache local.');
       }
@@ -178,7 +195,7 @@ async function run() {
     console.log('[Passo 5/5] Iniciando download do JSON final de debitos de CBS...');
     
     // Pega o token OAuth2 novamente (se expirou na espera, o servico renova automaticamente)
-    const activeToken = await AuthService.getAccessToken();
+    const activeToken = await AuthService.getAccessToken(rfClientId, rfClientSecret);
     const downloadUrl = `${rfBaseUrl}${prefixoRtc}/download/v1/${tiquete}`;
     console.log(`[Download] Solicitando download do arquivo de débitos à Receita Federal...`);
 
@@ -198,15 +215,18 @@ async function run() {
       fs.mkdirSync(downloadsDir, { recursive: true });
     }
 
-    // Formata o nome do arquivo final com data e hora local
+    // Formata o nome do arquivo final com data, hora e nome da empresa
     const dataHoraStr = new Date().toISOString().replace(/T/, '_').replace(/:/g, '-').split('.')[0];
-    const fileName = `cbs_debitos_${cnpj}_${dataHoraStr}.json`;
+    const nomeEmpresaSlug = empresaSelecionada.empresa.substring(0, 20).replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+    const fileName = `cbs_debitos_${cnpj}_${nomeEmpresaSlug}_${dataHoraStr}.json`;
     const filePath = path.join(downloadsDir, fileName);
 
     fs.writeFileSync(filePath, JSON.stringify(debitosData, null, 2), 'utf-8');
 
     console.log('===============================================================');
     console.log('✓ OPERAÇÃO CONCLUÍDA COM SUCESSO!');
+    console.log(`✓ Empresa: ${empresaSelecionada.empresa}`);
+    console.log(`✓ CNPJ: ${empresaSelecionada.cnpj_completo}`);
     console.log(`✓ Arquivo de debitos baixado e salvo em:`);
     console.log(`  ${filePath}`);
     console.log('===============================================================');

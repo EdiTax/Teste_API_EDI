@@ -21,8 +21,13 @@ out/
 
 # Caches locais do Motor de Apuração
 local-engine/token_cache.json
+local-engine/token_cache_*.json
+local-engine/tiquete_cache_*.json
 local-engine/limites_disparo.json
 local-engine/downloads/
+
+# Credenciais (chaves secretas da Receita Federal)
+credenciais_empresas.yaml
 
 # Logs do NPM e depuração
 npm-debug.log*

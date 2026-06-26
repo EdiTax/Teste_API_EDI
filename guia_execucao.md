@@ -42,12 +42,15 @@ WITH CHECK (true);
 Você pode publicar a sua API de Webhook na Vercel em poucos segundos através do terminal:
 
 ### Instalação da Vercel CLI (caso não possua)
+
 Abra o seu terminal na pasta do projeto `cloud-webhook` e execute:
+
 ```bash
 npm install -g vercel
 ```
 
 ### Deploy do Projeto
+
 1. Certifique-se de estar na pasta `c:\Users\edilson.rodrigues\Documents\26 - Apuração assitida\cloud-webhook`.
 2. Execute o comando de login no terminal:
    ```bash
@@ -60,14 +63,16 @@ npm install -g vercel
 4. Ao final do deploy, a Vercel gerará um link público (ex: `https://cloud-webhook-receita-xxxx.vercel.app`). **Guarde esta URL base**.
 
 ### Configurando as Variáveis de Ambiente no Painel Vercel
+
 No dashboard da Vercel, acesse o seu projeto criado, vá em **Settings** > **Environment Variables** e adicione as seguintes variáveis:
 
-*   `WEBHOOK_SECRET`: Crie uma chave secreta e aleatória de segurança (ex: `SenhaSeguraDoMeuWebhook123!`). Ela protegerá seus endpoints.
-*   `SUPABASE_URL`: A URL do seu projeto Supabase.
-*   `SUPABASE_SERVICE_ROLE_KEY`: A chave service_role do Supabase obtida no Passo 1.
+* `WEBHOOK_SECRET`: Crie uma chave secreta e aleatória de segurança (ex: `SenhaSeguraDoMeuWebhook123!`). Ela protegerá seus endpoints.
+* `SUPABASE_URL`: A URL do seu projeto Supabase.
+* `SUPABASE_SERVICE_ROLE_KEY`: A chave service_role do Supabase obtida no Passo 1.
 
 > [!NOTE]
 > Após salvar as variáveis no painel da Vercel, faça um novo deploy para que as alterações façam efeito executando:
+>
 > ```bash
 > vercel --prod
 > ```
@@ -79,6 +84,7 @@ No dashboard da Vercel, acesse o seu projeto criado, vá em **Settings** > **Env
 Com o webhook publicado e configurado na nuvem, configure o motor local que rodará em sua máquina.
 
 ### Preparação do Arquivo `.env`
+
 Acesse a pasta `c:\Users\edilson.rodrigues\Documents\26 - Apuração assitida\local-engine`, abra o arquivo `.env` e preencha com as suas chaves reais:
 
 ```env
@@ -101,6 +107,7 @@ CNPJ_APURACAO=12345678
 ```
 
 ### Instalação de Dependências e Inicialização do Motor Local
+
 Abra o seu terminal na pasta do motor local `local-engine` e execute os comandos:
 
 ```bash
@@ -112,6 +119,7 @@ npm run dev
 ```
 
 O motor iniciará o fluxo completo exibindo no console:
+
 1. Validação se o CNPJ já atingiu o limite de 2 chamadas/dia civil no arquivo local `limites_disparo.json`.
 2. Obtenção do Token OAuth2 na API de Produção da Receita Federal.
 3. Disparo do POST solicitando a apuração do CNPJ para a Receita.
