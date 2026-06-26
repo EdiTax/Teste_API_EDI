@@ -101,6 +101,8 @@ fases:
         regras_seguranca:
           - "Implementar Circuit Breaker e Lock local (ou persistido) por CNPJ/Dia."
           - "Registrar auditoria detalhada de cada solicitacao efetuada antes de disparar a requisicao."
+          - "Prevencao de Caracteres Especiais: O segredo do webhook (WEBHOOK_SECRET) nao deve conter o caractere '@' para nao quebrar parsers de URL rigidos no governo (evitando erro 400)."
+          - "Reuso de Disparo Diario: Se houver disparo 201 feito no dia, o motor local deve permitir pular o POST de envio e saltar direto para o Polling para poupar a cota diaria de 2 chamadas."
 
       - passo: 5
         titulo: "Sincronizacao dos Dados"
@@ -108,6 +110,8 @@ fases:
         logica: "A aplicacao local consulta periodicamente o banco de dados em nuvem buscando se o webhook registrou o tiquete correspondente."
         frequencia_sugerida: "30 segundos"
         tempo_maximo_espera: "10 minutos (Timeout do processamento)"
+        regras_execucao:
+          - "Timestamps nos Logs: Adicionar data/hora local em cada tentativa de Polling para auditoria do delay de processamento da Receita Federal (que pode demorar de 15 a 30 minutos)."
 
       - passo: 6
         titulo: "Download do Arquivo JSON Final"
@@ -125,3 +129,11 @@ fases:
           - "Validar a integridade e schema do JSON recebido."
           - "Persistir os dados no banco de dados local ou gerar relatorios."
           - "Disparar comando de delecao do tiquete no banco de dados na nuvem (limpeza de dados sensiveis)."
+
+insights_avancados_arquitetura:
+  - titulo: "Zero Trust & Clean-up Reativo (LGPD)"
+    descricao: "Dados fiscais sao sigilosos e nao devem acumular na nuvem. O banco de dados Supabase serve apenas como fila volatil. O tiquete e deletado reativamente na primeira consulta bem-sucedida do motor local."
+  - titulo: "Sincronia Estrita de Tokens (WEBHOOK_SECRET)"
+    descricao: "Mudancas no WEBHOOK_SECRET no motor local exigem atualizacao e redeploy imediato na Vercel para evitar erros de autenticacao 401 durante a entrega assincrona da Receita Federal."
+  - titulo: "Resiliencia do Servidor de Homologacao"
+    descricao: "Devido a frequentes timeouts (ETIMEDOUT) e restricoes de whitelist/VPN na infraestrutura de homologacao do Serpro, o motor deve estar apto a alternar dinamicamente para o gateway de producao para validacao de conectividade de rede."

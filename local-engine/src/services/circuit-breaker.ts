@@ -34,6 +34,25 @@ export class CircuitBreakerService {
   }
 
   /**
+   * Retorna a data/hora do último disparo realizado hoje para o CNPJ, se houver.
+   */
+  public static obterUltimoDisparoHoje(cnpj: string): string | null {
+    const data = this.carregarDados();
+    const hojeLocal = new Date().toLocaleDateString('pt-BR');
+    const chamadasDoCnpj = data[cnpj] || [];
+    
+    const chamadasHoje = chamadasDoCnpj.filter((timestampStr) => {
+      const dataChamada = new Date(timestampStr);
+      return dataChamada.toLocaleDateString('pt-BR') === hojeLocal;
+    });
+
+    if (chamadasHoje.length > 0) {
+      return chamadasHoje[chamadasHoje.length - 1];
+    }
+    return null;
+  }
+
+  /**
    * Registra um novo disparo de solicitacao efetuado com sucesso no arquivo local.
    */
   public static registrarDisparo(cnpj: string): void {

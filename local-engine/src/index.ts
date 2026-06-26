@@ -44,10 +44,26 @@ async function run() {
   }
 
   try {
+    let pularEnvio = false;
+    const ultimoDisparo = CircuitBreakerService.obterUltimoDisparoHoje(cnpj);
+
+    if (ultimoDisparo) {
+      const horaDisparo = new Date(ultimoDisparo).toLocaleTimeString('pt-BR');
+      console.log(`\n[Circuit Breaker] Detectamos que um disparo de apuração já foi realizado hoje às ${horaDisparo} para o CNPJ ${cnpj}.`);
+      console.log('Para evitar consumir o limite diário da Receita Federal (máx 2), você pode pular o envio e ir direto buscar o tíquete.');
+      const resposta = await AuthService.promptQuestion('👉 Deseja reutilizar o disparo anterior e ir direto para o Polling? (S/N) [Padrão: S]: ');
+      if (resposta.toLowerCase() !== 'n') {
+        pularEnvio = true;
+        console.log('✓ Opção escolhida: Reutilizar disparo anterior. Pulando chamada POST.');
+      }
+    }
+
     // 2. Passo 1: Verificar cota diaria de solicitacoes (Circuit Breaker)
-    console.log(`[Passo 1/5] Verificando limites locais de solicitacao para CNPJ ${cnpj}...`);
-    CircuitBreakerService.verificarELancar(cnpj);
-    console.log('✓ Cota diaria local valida. Prosseguindo.');
+    if (!pularEnvio) {
+      console.log(`[Passo 1/5] Verificando limites locais de solicitacao para CNPJ ${cnpj}...`);
+      CircuitBreakerService.verificarELancar(cnpj);
+      console.log('✓ Cota diaria local valida. Prosseguindo.');
+    }
 
     // 3. Passo 2: Obter Token de Autenticacao OAuth2
     console.log('[Passo 2/5] Solicitando token de autenticacao OAuth2 da Receita Federal...');
@@ -55,28 +71,32 @@ async function run() {
     const tokenMascarado = `${accessToken.substring(0, 8)}...${accessToken.substring(accessToken.length - 8)}`;
     console.log(`✓ Token OAuth2 obtido com sucesso: [ ${tokenMascarado} ]`);
 
-    // 4. Passo 3: Disparar Solicitacao de Apuracao Assincrona na Receita
-    console.log(`[Passo 3/5] Disparando solicitacao de apuracao de débitos para ${cnpj} (${process.env.RF_AMBIENTE || 'producao'})...`);
-    const apuracaoUrl = `${rfBaseUrl}${prefixoRtc}/apuracao-cbs/v1/${cnpj}`;
-    console.log(`👉 Enviando POST para: ${apuracaoUrl}`);
-    console.log(`👉 Webhook que receberá o tíquete: ${webhookUrl}`);
+    if (!pularEnvio) {
+      // 4. Passo 3: Disparar Solicitacao de Apuracao Assincrona na Receita
+      console.log(`[Passo 3/5] Disparando solicitacao de apuracao de débitos para ${cnpj} (${process.env.RF_AMBIENTE || 'producao'})...`);
+      const apuracaoUrl = `${rfBaseUrl}${prefixoRtc}/apuracao-cbs/v1/${cnpj}`;
+      console.log(`👉 Enviando POST para: ${apuracaoUrl}`);
+      console.log(`👉 Webhook que receberá o tíquete: ${webhookUrl}`);
 
-    // Chamada HTTP para a Receita Federal informando o webhook da Vercel
-    const responseSolicitacao = await axios.post(
-      apuracaoUrl,
-      { webhookUrl: webhookUrl },
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
+      // Chamada HTTP para a Receita Federal informando o webhook da Vercel
+      const responseSolicitacao = await axios.post(
+        apuracaoUrl,
+        { urlRetorno: webhookUrl },
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          }
         }
-      }
-    );
+      );
 
-    console.log(`✓ Solicitacao aceita pela Receita Federal (Status: ${responseSolicitacao.status}).`);
-    
-    // Registra a chamada com sucesso no circuit breaker
-    CircuitBreakerService.registrarDisparo(cnpj);
+      console.log(`✓ Solicitacao aceita pela Receita Federal (Status: ${responseSolicitacao.status}).`);
+      
+      // Registra a chamada com sucesso no circuit breaker
+      CircuitBreakerService.registrarDisparo(cnpj);
+    } else {
+      console.log('[Passo 3/5] Pulado por solicitação do usuário (reutilizando disparo anterior).');
+    }
 
     // 5. Passo 4: Sincronizacao / Polling na nuvem
     console.log('[Passo 4/5] Aguardando processamento da Receita Federal...');
@@ -87,7 +107,8 @@ async function run() {
 
     while (tentativas < MAX_POLLING_ATTEMPTS) {
       tentativas++;
-      console.log(`[Polling] Tentativa ${tentativas}/${MAX_POLLING_ATTEMPTS} - Consultando tiquete na nuvem...`);
+      const horaAtual = new Date().toLocaleTimeString('pt-BR');
+      console.log(`[Polling] [${horaAtual}] Tentativa ${tentativas}/${MAX_POLLING_ATTEMPTS} - Consultando tiquete na nuvem...`);
 
       try {
         const responsePolling = await axios.get<{ status: 'pending' | 'completed'; tiquete?: string }>(

@@ -14,7 +14,7 @@ export class AuthService {
   /**
    * Helper para perguntar dados no console local de forma assíncrona.
    */
-  private static promptQuestion(query: string): Promise<string> {
+  public static promptQuestion(query: string): Promise<string> {
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout
